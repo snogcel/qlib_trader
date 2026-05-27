@@ -53,12 +53,12 @@ test_end_time = "2025-04-01"
 fit_start_time = None
 fit_end_time = None
 
-provider_uri = "/Projects/qlib_trading_v2/qlib_data/CRYPTODATA_VALIDATED_2"
+provider_uri = "/Projects/qlib_trader/qlib_data/CRYPTODATA_VALIDATED_2"
 
 SEED = 23020 # RANDOM SEED for Entropy Purposes, see: https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/
 MARKET = "all"
 BENCHMARK = "BTCUSDT"
-EXP_NAME = "crypto_exp_101"
+EXP_NAME = "crypto_exp_102"
 FREQ = "day"
 
 qlib.init(provider_uri=provider_uri, region=REG_US)
@@ -94,14 +94,11 @@ def cross_validation_fcn(df_train, model, early_stopping_flag=True):
 
         # Train your model here
         if early_stopping_flag:
-            # Use early stopping if enabled
             model.fit(X_train, y_train, eval_set=[(X_val, y_val)],
-                      callbacks=[lgbm.early_stopping(stopping_rounds=1000, verbose=True)]) # increase default stopping_rounds = 1000 if flag is set to True
+                      callbacks=[lgbm.early_stopping(stopping_rounds=500, verbose=False)])
         else:
             model.fit(X_train, y_train)
 
-        # model.fit(X_train, y_train)
-            
         # Make predictions on the validation set and calculate the MSE score
         y_pred = model.predict(X_val)
         y_pred_df = pd.DataFrame(y_pred)
@@ -562,7 +559,7 @@ if __name__ == '__main__':
         "module_path": "src.data.gdelt_loader",
         "kwargs": {
             "config": {
-                "feature": gdelt_dataloader.get_feature_config()
+                "feature": gdelt_dataloader.get_feature_config(),
             },
             "freq": freq_config["label"],  # "day"
             "inst_processors": inst_processors
@@ -594,25 +591,27 @@ if __name__ == '__main__':
         "metric": ["l1", "l2"], # , "l2", "l1" # "rmse"
         "boosting_type": "gbdt",
         "device": "cpu",
-        "verbose": 1, # set to verbose for more logs (this is outrageously complex lol)
+        "verbose": -1, # set to verbose for more logs (this is outrageously complex lol)
         "random_state": 141551, # https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/
         "early_stopping_rounds": 500,
-        "num_boost_round": 2250,         # Let early stopping decide
+        "n_estimators": 2250,         # Let early stopping decide
         "seed": SEED
     }
 
     GENERIC_LGBM_PARAMS = {       
         # Conservative learning settings for feature exploration
-        "learning_rate": 0.1,           # Moderate learning rate
+        # "learning_rate": 0.1,           # Moderate learning rate
         # "num_leaves": 64,                # Balanced complexity
         # "max_depth": 8,                  # Reasonable depth for GDELT features
         
         # Regularization (moderate to prevent overfitting)
-        "lambda_l1": 0.1,
-        "lambda_l2": 0.1,
+        # "lambda_l1": 0.1,
+        # "lambda_l2": 0.1,
         
         # "min_data_in_leaf": 20, # remove constraint for tuning
         
+        "min_gain_to_split": 1e-2,        # Minimum gain to make a split
+        "min_child_samples": 40,          # Minimum samples per leaf
         "feature_fraction": 0.8,         # Use 80% of features per tree
         "bagging_fraction": 0.8,         # Use 80% of data per iteration
         "bagging_freq": 5,
@@ -630,11 +629,9 @@ if __name__ == '__main__':
         # 0.5: {**CORE_LGBM_PARAMS},                
         # 0.9: {**CORE_LGBM_PARAMS} 
 
-        # 11 is a good, even tree depth (see: https://www.geeksforgeeks.org/machine-learning/lightgbm-light-gradient-boosting-machine/)
-
-        0.1: {'max_depth': 11, **CORE_LGBM_PARAMS},
-        0.5: {'max_depth': 11, **CORE_LGBM_PARAMS},                
-        0.9: {'max_depth': 11, **CORE_LGBM_PARAMS}
+        0.1: {'max_depth': 11, **CORE_LGBM_PARAMS, **GENERIC_LGBM_PARAMS},
+        0.5: {'max_depth': 11, **CORE_LGBM_PARAMS, **GENERIC_LGBM_PARAMS},                
+        0.9: {'max_depth': 11, **CORE_LGBM_PARAMS, **GENERIC_LGBM_PARAMS}
 
     }
 
@@ -676,87 +673,7 @@ if __name__ == '__main__':
         }
     }
 
-    # define the objective function for Optuna optimization
-    def objective(trial):
-
-        params = {
-            "objective": "quantile",
-            "metric": ["l2", "l1"],
-            "boosting_type": "gbdt",
-            "device": "cpu",
-            "verbose": 1,
-            
-            "alpha": 0.1, # this controls which percentile the predictive model is targeting - in this case, Q10                     
-
-            # Regularization (moderate to prevent overfitting)
-            #"lambda_l1": 0.1,
-            #"lambda_l2": 0.1,
-            #"min_data_in_leaf": 20,
-            #"feature_fraction": 0.8,         # Use 80% of features per tree
-            #"bagging_fraction": 0.8,         # Use 80% of data per iteration
-            #"bagging_freq": 5,
-            
-            #"colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
-            #"subsample": trial.suggest_float("subsample", 0.5, 1.0),
-
-            # "learning_rate": 0.05628507997416036,
-            # "max_depth": 8,            
-            # "num_leaves": 163,
-            # "lambda_l1": 4.511969685016852, 
-            # "lambda_l2": 0.0006936273081692159,
-            
-            # "min_data_in_leaf": 20, # remove constraint to prevent overfitting
-
-            # "feature_fraction": 0.8,         # Use 80% of features per tree
-            # "bagging_fraction": 0.8,         # Use 80% of data per iteration
-            # "bagging_freq": 5,
-            
-            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.1, log=True),
-            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.7, 1.0),
-            "subsample": trial.suggest_float("subsample", 0.7, 1.0),
-            "lambda_l1": trial.suggest_loguniform("lambda_l1", 1e-8, 10.0),
-            "lambda_l2": trial.suggest_loguniform("lambda_l2", 1e-8, 10.0),
-            "max_depth": trial.suggest_int("max_depth", 4, 50), # increase max depth to 50
-            "num_leaves": trial.suggest_int("num_leaves", 20, 512),    
-
-            "min_data_in_leaf": trial.suggest_int("min_data_in_leaf", 2, 512), # use optuna to find the optimilar data points within each point of decision tree (LGBM) - doesn't apply to LGBM model AFAIK          
-            
-            # "max_depth": trial.suggest_int("max_depth", 4, 10),
-           
-
-            # Early stopping
-            "early_stopping_rounds": 1000, # increase from 100 to 1000 training rounds -- the variable is not being passed to cross_validation_fcn (AFAIK)
-            "num_boost_round": 1000,         # Let early stopping decide
-
-            # Set seed for reproducibility
-            "seed": SEED
-        }
-
-        # Create model variable with params (essentially a pointer), then pass into cross_validation_fcn
-        # create the LightGBM regressor with the optimized parameters
-
-        print("_DEFINE_MODEL_OBJECT_")
-        # raise SystemExit()
-
-        model = lgbm.LGBMRegressor(**params)
-
-        # perform cross-validation using the optimized LightGBM regressor
-        lgbm_model, mean_score = cross_validation_fcn(df_train, model, early_stopping_flag=True) # test disabling early_stopping_flag
-
-        print("_CROSS_VALIDATION_FUNCTION_2_")
-        # raise SystemExit()
-
-        # optimized lgbm_model should be returned from cross_validation_fcn
-
-        # retrieve the best iteration of the model and store it as a user attribute in the trial object
-        best_iteration = lgbm_model.best_iteration_
-        
-        print("best_iteration: ")
-        print(best_iteration)
-        
-        trial.set_user_attr('best_iteration', best_iteration)
-            
-        return mean_score
+    
 
     model = init_instance_by_config(task_config["model"])
     dataset = init_instance_by_config(task_config["dataset"])
@@ -771,8 +688,62 @@ if __name__ == '__main__':
     X_val, y_val = df_valid["feature"], df_valid["label"]
     #X_test, y_test = df_test["feature"], df_test["label"]
 
-    print("_SPLIT_DATA_")    
+    # define the objective function for Optuna optimization
+    def objective(trial):
+
+        params = {
+            **CORE_LGBM_PARAMS,
+            **GENERIC_LGBM_PARAMS,
+
+            "alpha": 0.5,  # fixed quantile target for Q10
+
+            # Tuned complexity / regularization
+            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.1, log=True),
+            "max_depth": trial.suggest_int("max_depth", 4, 15),
+            "num_leaves": trial.suggest_int("num_leaves", 20, 256),
+            #"min_child_samples": trial.suggest_int("min_child_samples", 20, 200),
+            #"min_gain_to_split": trial.suggest_float("min_gain_to_split", 1e-4, 1.0, log=True),
+            #"feature_fraction": trial.suggest_float("feature_fraction", 0.6, 1.0),
+            #"bagging_fraction": trial.suggest_float("bagging_fraction", 0.6, 1.0),
+            #"bagging_freq": trial.suggest_int("bagging_freq", 1, 10),
+            "lambda_l1": trial.suggest_float("lambda_l1", 1e-8, 10.0, log=True),
+            "lambda_l2": trial.suggest_float("lambda_l2", 1e-8, 10.0, log=True),
+        }
+
+        # Create model variable with params (essentially a pointer), then pass into cross_validation_fcn
+        # create the LightGBM regressor with the optimized parameters
+
+        print("_DEFINE_MODEL_OBJECT_")
+        
+
+        model = lgbm.LGBMRegressor(**params)
+
+        # perform cross-validation using the optimized LightGBM regressor
+        lgbm_model, mean_score = cross_validation_fcn(df_train, model, early_stopping_flag=True) # test disabling early_stopping_flag
+
+        print("_CROSS_VALIDATION_FUNCTION_2_")
+        # raise SystemExit()        
+
+        # optimized lgbm_model should be returned from cross_validation_fcn
+
+        # retrieve the best iteration of the model and store it as a user attribute in the trial object
+        best_iteration = lgbm_model.best_iteration_
+        
+        print("best_iteration: ")
+        print(best_iteration)
+        
+        trial.set_user_attr('best_iteration', best_iteration)
+            
+        return mean_score
+
+    # create and run Optuna study (call objective)
+    study = optuna.create_study(direction="minimize", study_name="lgbm_opt")
+    study.optimize(objective, n_trials=100)  # adjust n_trials/n_jobs as needed
+
+    print("Optuna best value:", study.best_value)
+    print("Optuna best params:", study.best_trial.params)
     
+
     model.fit(dataset=dataset)
 
     print("_FIT_DATA_TO_LGBM_MODEL_")
