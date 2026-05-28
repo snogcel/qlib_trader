@@ -1,0 +1,39 @@
+
+=== HUMMINGBOT QUANTILE BACKTEST REPORT ===
+
+CONFIGURATION:
+- Trading Pair: BTCUSDT
+- Initial Balance: $10,000.00
+- Long Threshold: 0.60
+- Short Threshold: 0.60
+- Max Position: 15.0%
+- Fee Rate: 0.100%
+
+POSITION MANAGEMENT:
+- Neutral Close Threshold: 0.60
+- Min Confidence to Hold: 2.0
+- Opposing Signal Threshold: 0.30
+
+PERFORMANCE SUMMARY:
+- Total Return: 11.34%
+- Annualized Return: 15.33%
+- Volatility: 15.52%
+- Sharpe Ratio: 1.00
+- Max Drawdown: -9.99%
+
+TRADING STATISTICS:
+- Total Trades: 2,042
+- Total Holds: 4,447
+- Trade Frequency: 30.94%
+- Hold Frequency: 67.38%
+- Win Rate: 10.77%
+
+HOLD ANALYSIS:
+- HOLD_POSITION: 4,447 periods
+
+FINAL STATE:
+- Final Balance: $11,126.71
+- Final Position: 0.0000
+- Final Portfolio Value: $11,134.30
+
+OBSERVATIONS: 6,600

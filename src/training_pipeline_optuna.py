@@ -63,28 +63,33 @@ FREQ = "day"
 
 qlib.init(provider_uri=provider_uri, region=REG_US)
 
-def cross_validation_fcn(df_train, model, early_stopping_flag=True):
+def cross_validation_fcn(df_train, model, quantile=0.5, early_stopping_flag=True, verbose_cv=False):
     """
-    Performs cross-validation on a given model using KFold and returns the average
-    mean squared error (MSE) score across all folds.
+    Performs time-series cross-validation on a given model and returns the average
+    quantile loss score across all folds.
 
     Parameters:
-    - X_train: the training data to use for cross-validation
-    - model: the machine learning model to use for cross-validation
-    - early_stopping_flag: a boolean flag to indicate whether early stopping should be used (default is True)
+    - df_train: the training dataframe for cross-validation
+    - model: the LightGBM model to use for cross-validation
+    - quantile: target quantile for the quantile loss metric
+    - early_stopping_flag: whether to use early stopping during fit
+    - verbose_cv: whether to print LightGBM evaluation logs
 
     Returns:
-    - model: the trained machine learning model
-    - mean_mse: the average MSE score across all folds
+    - model: the trained model from the final fold
+    - mean_loss: the average quantile loss across all folds
+    - fold_best_iterations: list of best_iteration for each fold
     """
     
     tscv = TimeSeriesSplit(n_splits=5)
     X, y = df_train["feature"], df_train["label"]
+    params = model.get_params()
 
     print("_DEBUG_CROSS_VALIDATION_")
-    # raise SystemExit()
 
-    mse_list = []
+    loss_list = []
+    fold_best_iterations = []
+    fold_model = None
     for fold, (train_idx, val_idx) in enumerate(tscv.split(X)):
         X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
         y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
@@ -92,24 +97,39 @@ def cross_validation_fcn(df_train, model, early_stopping_flag=True):
         print(f"Fold {fold+1}: Train [{X_train.index[0]} to {X_train.index[-1]}], "
             f"Valid [{X_val.index[0]} to {X_val.index[-1]}]")
 
-        # Train your model here
+        fold_model = lgbm.LGBMRegressor(**params)
+        callbacks = []
         if early_stopping_flag:
-            model.fit(X_train, y_train, eval_set=[(X_val, y_val)],
-                      callbacks=[lgbm.early_stopping(stopping_rounds=500, verbose=False)])
+            callbacks.append(lgbm.early_stopping(stopping_rounds=50, verbose=verbose_cv))
+            if verbose_cv:
+                callbacks.append(lgbm.log_evaluation(100))
+            fold_model.fit(
+                X_train,
+                y_train,
+                eval_set=[(X_val, y_val)],
+                eval_names=["valid"],
+                eval_metric="quantile",
+                callbacks=callbacks
+            )
         else:
-            model.fit(X_train, y_train)
+            fold_model.fit(
+                X_train,
+                y_train,
+                eval_metric="quantile",
+                verbose=False,
+            )
 
-        # Make predictions on the validation set and calculate the MSE score
-        y_pred = model.predict(X_val)
-        y_pred_df = pd.DataFrame(y_pred)
+        y_pred = fold_model.predict(X_val)
+        y_pred_df = pd.DataFrame(y_pred, index=X_val.index)
 
-        y_pred_df.index = X_val.index
+        loss, _ = quantile_loss(y_val, y_pred_df, quantile)
+        loss_list.append(loss)
 
-        mse = MSE(y_val, y_pred_df)
-        mse_list.append(mse)
+        current_best = getattr(fold_model, "best_iteration_", None)
+        print(f"  fold {fold+1} best_iteration: {current_best}")
+        fold_best_iterations.append(current_best)
         
-    # Return the trained model and the average MSE score
-    return model, np.mean(mse_list)
+    return fold_model, np.median(loss_list), fold_best_iterations
 
 def adaptive_entropy_coef(vol_scaled, base=0.005, min_coef=0.001, max_coef=0.02):
     """
@@ -593,8 +613,8 @@ if __name__ == '__main__':
         "device": "cpu",
         "verbose": -1, # set to verbose for more logs (this is outrageously complex lol)
         "random_state": 141551, # https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/
-        "early_stopping_rounds": 500,
-        "n_estimators": 2250,         # Let early stopping decide
+        "early_stopping_rounds": 50,
+        "n_estimators": 1000,         # Let early stopping decide
         "seed": SEED
     }
 
@@ -620,6 +640,42 @@ if __name__ == '__main__':
     # INIT_QLIB_INSTANCE
     # pass multi_quantile_params into QLib architecture
 
+    Q50_PARAMS = {
+        "objective": "quantile",        
+        "n_estimators": 300,          # median best_iter from trial 19 was 112; add ~40% buffer for full training set
+        "learning_rate": 0.024,       # center of converged range
+        "num_leaves": 7,              # strongly supported
+        "min_child_samples": 185,     # high end of converged range
+        "reg_alpha": 0.13,            # trial 19 value; weak but directionally supported
+        "reg_lambda": 0.003,          # geometric mean of top-trial range
+        "max_depth": -1,
+        "verbose": -1,
+    }
+
+    Q10_PARAMS = {
+        "objective": "quantile",        
+        "n_estimators": 700,          # much higher than Q50 - fold 4 hits 475, final fit will need more
+        "learning_rate": 0.017,       # trial 12 value; low-LR + many trees consistent with best results
+        "num_leaves": 25,             # clear signal: 20-30, not 6-9 like Q50
+        "min_child_samples": 200,     # hitting search ceiling; use max
+        "reg_alpha": 0.21,            # moderate L1; top trials cluster 0.15-0.40
+        "reg_lambda": 0.00015,        # extremely strong signal toward near-zero L2
+        "max_depth": -1,
+        "verbose": -1,
+    }
+
+    Q90_PARAMS = {
+        "objective": "quantile",        
+        "n_estimators": 500,          # fold 5 hits 350 for best trial; buffer to 500
+        "learning_rate": 0.024,       # consistent across top trials (0.021-0.040)
+        "num_leaves": 6,              # extremely strong signal - don't deviate
+        "min_child_samples": 30,      # dramatically lower than Q10/Q50 - trust this
+        "reg_alpha": 0.40,            # moderate-to-high L1; top trials span 0.15-0.87
+        "reg_lambda": 0.035,          # moderate L2; much higher than Q10's near-zero
+        "max_depth": -1,
+        "verbose": -1,
+    }
+
     multi_quantile_params = {
         # 0.1: {'learning_rate': 0.060555113429817814, 'colsample_bytree': 0.7214813020361056, 'subsample': 0.7849919729082881, 'lambda_l1': 8.722794281828277e-05, 'lambda_l2': 3.220667556916701e-05, 'max_depth': 10, 'num_leaves': 224, **GENERIC_LGBM_PARAMS},
         # 0.5: {'learning_rate': 0.02753370821225369, 'max_depth': -1, 'lambda_l1': 0.1, 'lambda_l2': 0.1, **GENERIC_LGBM_PARAMS},
@@ -629,9 +685,9 @@ if __name__ == '__main__':
         # 0.5: {**CORE_LGBM_PARAMS},                
         # 0.9: {**CORE_LGBM_PARAMS} 
 
-        0.1: {'max_depth': 11, **CORE_LGBM_PARAMS, **GENERIC_LGBM_PARAMS},
-        0.5: {'max_depth': 11, **CORE_LGBM_PARAMS, **GENERIC_LGBM_PARAMS},                
-        0.9: {'max_depth': 11, **CORE_LGBM_PARAMS, **GENERIC_LGBM_PARAMS}
+        0.1: {**Q10_PARAMS},
+        0.5: {**Q50_PARAMS},                
+        0.9: {**Q90_PARAMS}
 
     }
 
@@ -675,7 +731,7 @@ if __name__ == '__main__':
 
     
 
-    model = init_instance_by_config(task_config["model"])
+    
     dataset = init_instance_by_config(task_config["dataset"])
 
     # prepare segments
@@ -688,62 +744,75 @@ if __name__ == '__main__':
     X_val, y_val = df_valid["feature"], df_valid["label"]
     #X_test, y_test = df_test["feature"], df_test["label"]
 
+    # use train+valid for Optuna tuning so the time-series CV includes the newest available data
+    df_tune = pd.concat([df_train, df_valid], axis=0, join="outer", ignore_index=False)
+
     # define the objective function for Optuna optimization
     def objective(trial):
 
         params = {
-            **CORE_LGBM_PARAMS,
-            **GENERIC_LGBM_PARAMS,
+            #"min_gain_to_split": 1e-2,        # Minimum gain to make a split
+            #"min_child_samples": 40,          # Minimum samples per leaf
+            #"feature_fraction": 0.8,         # Use 80% of features per tree
+            #"bagging_fraction": 0.8,         # Use 80% of data per iteration
+            #"bagging_freq": 5,
+            "objective": "quantile", 
+            "n_estimators": 1000,
 
-            "alpha": 0.5,  # fixed quantile target for Q10
-
+            "alpha": 0.9,  # fixed quantile target for Q50
+            "verbose": -1,
             # Tuned complexity / regularization
             "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.1, log=True),
-            "max_depth": trial.suggest_int("max_depth", 4, 15),
-            "num_leaves": trial.suggest_int("num_leaves", 20, 256),
-            #"min_child_samples": trial.suggest_int("min_child_samples", 20, 200),
+            # "max_depth": trial.suggest_int("max_depth", 5, 25),
+            "max_depth": -1,  # no max depth to allow full exploration of num_leaves
+            "num_leaves": trial.suggest_int("num_leaves", 6, 63),  # 63 is safe for ~9k / 98
+            "min_child_samples": trial.suggest_int("min_child_samples", 20, 200),
+
             #"min_gain_to_split": trial.suggest_float("min_gain_to_split", 1e-4, 1.0, log=True),
             #"feature_fraction": trial.suggest_float("feature_fraction", 0.6, 1.0),
             #"bagging_fraction": trial.suggest_float("bagging_fraction", 0.6, 1.0),
             #"bagging_freq": trial.suggest_int("bagging_freq", 1, 10),
-            "lambda_l1": trial.suggest_float("lambda_l1", 1e-8, 10.0, log=True),
-            "lambda_l2": trial.suggest_float("lambda_l2", 1e-8, 10.0, log=True),
+            
+            "reg_alpha": trial.suggest_float("reg_alpha", 1e-4, 1.0, log=True),   # ← not lambda_l1
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-4, 1.0, log=True), # ← not lambda_l2
         }
-
-        # Create model variable with params (essentially a pointer), then pass into cross_validation_fcn
-        # create the LightGBM regressor with the optimized parameters
-
-        print("_DEFINE_MODEL_OBJECT_")
-        
 
         model = lgbm.LGBMRegressor(**params)
 
-        # perform cross-validation using the optimized LightGBM regressor
-        lgbm_model, mean_score = cross_validation_fcn(df_train, model, early_stopping_flag=True) # test disabling early_stopping_flag
+        # perform cross-validation using the optimized LightGBM regressor on train+valid
+        lgbm_model, mean_score, fold_best_iterations = cross_validation_fcn(
+            df_tune,
+            model,
+            quantile=params["alpha"],
+            early_stopping_flag=True,
+            verbose_cv=True,
+        )
 
-        print("_CROSS_VALIDATION_FUNCTION_2_")
-        # raise SystemExit()        
-
-        # optimized lgbm_model should be returned from cross_validation_fcn
-
-        # retrieve the best iteration of the model and store it as a user attribute in the trial object
-        best_iteration = lgbm_model.best_iteration_
+        # Aggregate best_iteration across all folds using median (fold 5 often shows iter=1 due to distribution shift)
+        best_iteration_median = int(np.median(fold_best_iterations)) if fold_best_iterations else None
+        best_iteration_fold5 = fold_best_iterations[-1] if fold_best_iterations else None
         
-        print("best_iteration: ")
-        print(best_iteration)
+        print(f"fold_best_iterations: {fold_best_iterations}")
+        print(f"  Median (folds 1-5): {best_iteration_median}")
+        print(f"  Fold 5 only (distribution shift indicator): {best_iteration_fold5}")
         
-        trial.set_user_attr('best_iteration', best_iteration)
+        trial.set_user_attr('best_iteration_median', best_iteration_median)
+        trial.set_user_attr('best_iteration_fold5_only', best_iteration_fold5)
+        trial.set_user_attr('fold_best_iterations', fold_best_iterations)
             
         return mean_score
 
     # create and run Optuna study (call objective)
-    study = optuna.create_study(direction="minimize", study_name="lgbm_opt")
-    study.optimize(objective, n_trials=100)  # adjust n_trials/n_jobs as needed
+    isTuning = False
+    if isTuning is True:
+        study = optuna.create_study(direction="minimize", study_name="lgbm_opt")
+        study.optimize(objective, n_trials=25)  # adjust n_trials/n_jobs as needed
+        print("Optuna best value:", study.best_value)
+        print("Optuna best params:", study.best_trial.params)  
+        raise SystemExit()    
 
-    print("Optuna best value:", study.best_value)
-    print("Optuna best params:", study.best_trial.params)
-    
 
+    model = init_instance_by_config(task_config["model"])
     model.fit(dataset=dataset)
 
     print("_FIT_DATA_TO_LGBM_MODEL_")
@@ -791,7 +860,7 @@ if __name__ == '__main__':
     }).dropna().sort_index()
 
     # fit to tuned model
-    model.fit(dataset=dataset)
+    # model.fit(dataset=dataset)
 
     preds_train = model.predict(dataset, "train")
     preds_valid = model.predict(dataset, "valid")

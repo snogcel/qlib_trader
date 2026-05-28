@@ -875,6 +875,11 @@ class HummingbotQuantileBacktester:
                 reason = hold['hold_reason']
                 hold_reasons[reason] = hold_reasons.get(reason, 0) + 1
         
+        # Track completed round trips rather than individual legs
+        closing_trades = [t for t in self.trades if t.get("trade_type") != "DIRECTIONAL" 
+                        or t["position_after"] == 0]
+        win_rate = len([t for t in closing_trades if t.get('pnl', 0) > 0]) / len(closing_trades)     
+
         metrics = {
             "total_return": total_return,
             "annualized_return": (1 + total_return) ** (periods_per_year / len(results_df)) - 1,

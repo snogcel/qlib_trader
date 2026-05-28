@@ -1,0 +1,5 @@
+,total_return,sharpe_ratio,max_drawdown,total_trades,win_rate
+conservative_validated,0.1134,0.9967,-0.0999,2042.0,0.1077
+moderate_validated,0.0926,1.2285,-0.0567,2154.0,0.1045
+aggressive_validated,0.1883,1.5983,-0.0885,2105.0,0.1064
+hybrid_best,0.0926,1.2285,-0.0567,2154.0,0.1045

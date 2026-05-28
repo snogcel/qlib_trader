@@ -1,0 +1,158 @@
+{
+  "total_observations": 6600,
+  "signal_direction_distribution": {
+    "HOLD": 4447,
+    "LONG": 1589,
+    "SHORT": 564
+  },
+  "trade_outcome_distribution": {
+    "HOLD_POSITION": 4447,
+    "EXECUTED": 2041,
+    "HOLD_NO_POSITION": 112
+  },
+  "execution_rate_by_direction": {
+    "SHORT": {
+      "execution_rate": 1.0,
+      "total_signals": 564,
+      "executed_trades": "564"
+    },
+    "LONG": {
+      "execution_rate": 0.9295154185022027,
+      "total_signals": 1589,
+      "executed_trades": "1477"
+    },
+    "HOLD": {
+      "execution_rate": 0.0,
+      "total_signals": 4447,
+      "executed_trades": "0"
+    }
+  },
+  "execution_rate_by_confidence": {
+    "Very_High": {
+      "execution_rate": 0.25675982731197455,
+      "total_signals": 4401,
+      "avg_target_pct": 0.013836373623839649
+    },
+    "Medium": {
+      "execution_rate": 0.4336134453781513,
+      "total_signals": 595,
+      "avg_target_pct": 0.01089715827428467
+    },
+    "High": {
+      "execution_rate": 0.35250266240681577,
+      "total_signals": 939,
+      "avg_target_pct": 0.013668627022320233
+    },
+    "Low": {
+      "execution_rate": 0.4842105263157895,
+      "total_signals": 665,
+      "avg_target_pct": 0.00842233977388958
+    }
+  },
+  "execution_rate_by_strength": {
+    "Low": {
+      "execution_rate": 0.9499757163671685,
+      "total_signals": 2059,
+      "avg_confidence": 7.799902865468674
+    },
+    "Very_Low": {
+      "execution_rate": 0.0,
+      "total_signals": 4447,
+      "avg_confidence": 8.765234989880819
+    },
+    "Medium": {
+      "execution_rate": 0.8977272727272727,
+      "total_signals": 88,
+      "avg_confidence": 5.386363636363637
+    },
+    "Very_High": {
+      "execution_rate": 1.0,
+      "total_signals": 3,
+      "avg_confidence": 6.666666666666667
+    },
+    "High": {
+      "execution_rate": 1.0,
+      "total_signals": 3,
+      "avg_confidence": 6.666666666666667
+    }
+  },
+  "average_metrics_by_outcome": {
+    "EXECUTED": {
+      "count": 2041,
+      "avg_signal_strength": 0.4563078056389928,
+      "avg_confidence": 7.777070063694268,
+      "avg_target_pct": 0.028731736595581613,
+      "avg_prob_directional": 0.535580148849342,
+      "avg_signal_quality_score": 0.018705690532385768
+    },
+    "HOLD_POSITION": {
+      "count": 4447,
+      "avg_signal_strength": 0.14769171812094087,
+      "avg_confidence": 8.765234989880819,
+      "avg_target_pct": 0.005486970980093282,
+      "avg_prob_directional": 0.5204565996702673,
+      "avg_signal_quality_score": 0.006701190714117414
+    },
+    "HOLD_NO_POSITION": {
+      "count": 112,
+      "avg_signal_strength": 0.4639208573789329,
+      "avg_confidence": 6.258928571428571,
+      "avg_target_pct": 0.024744213171929094,
+      "avg_prob_directional": 0.5453265779992735,
+      "avg_signal_quality_score": 0.015356541280480977
+    }
+  },
+  "threshold_analysis": {
+    "above_threshold": {
+      "count": 665,
+      "execution_rate": 0.4842105263157895,
+      "avg_signal_strength": 0.3293484394392392
+    },
+    "below_threshold": {
+      "count": 5935,
+      "execution_rate": 0.28963774220724514,
+      "avg_signal_strength": 0.23943584255979017
+    }
+  },
+  "time_analysis": {
+    "execution_rate_by_hour": {
+      "0": 0.3236363636363636,
+      "1": 0.29454545454545455,
+      "2": 0.2872727272727273,
+      "3": 0.3381818181818182,
+      "4": 0.29454545454545455,
+      "5": 0.3054545454545455,
+      "6": 0.31272727272727274,
+      "7": 0.3527272727272727,
+      "8": 0.33454545454545453,
+      "9": 0.32,
+      "10": 0.3018181818181818,
+      "11": 0.2909090909090909,
+      "12": 0.3018181818181818,
+      "13": 0.3381818181818182,
+      "14": 0.32727272727272727,
+      "15": 0.2909090909090909,
+      "16": 0.32,
+      "17": 0.29454545454545455,
+      "18": 0.2872727272727273,
+      "19": 0.33090909090909093,
+      "20": 0.2581818181818182,
+      "21": 0.3018181818181818,
+      "22": 0.26545454545454544,
+      "23": 0.3490909090909091
+    },
+    "execution_rate_by_day": {
+      "Friday": 0.34935897435897434,
+      "Monday": 0.33125,
+      "Saturday": 0.30982905982905984,
+      "Sunday": 0.27395833333333336,
+      "Thursday": 0.2799145299145299,
+      "Tuesday": 0.2948717948717949,
+      "Wednesday": 0.32585470085470086
+    },
+    "weekend_vs_weekday": {
+      "weekend_execution_rate": 0.2916666666666667,
+      "weekday_execution_rate": 0.3163265306122449
+    }
+  }
+}
